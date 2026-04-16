@@ -1,0 +1,279 @@
+#!/bin/bash
+# lt — your daily lieutenant
+# usage: lt [command] [args]
+
+# ── Storage ────────────────────────────────────────────────────────────────────
+LT_DIR="$HOME/.local/share/lt"
+TASKS="$LT_DIR/tasks"
+NOTES="$LT_DIR/notes"
+FOCUS="$LT_DIR/focus"
+
+mkdir -p "$LT_DIR"
+touch "$TASKS" "$NOTES" "$FOCUS" 2>/dev/null
+
+# ── Colors ─────────────────────────────────────────────────────────────────────
+C='\033[0;36m'   # cyan
+G='\033[0;32m'   # green
+R='\033[0;31m'   # red
+Y='\033[1;33m'   # yellow
+D='\033[0;90m'   # dim
+W='\033[0;37m'   # white
+B='\033[1m'      # bold
+N='\033[0m'      # reset
+
+HR="${D}────────────────────────────────────────────────${N}"
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+now()   { date '+%Y-%m-%d %H:%M'; }
+today() { date '+%a %d %b %Y'; }
+clock() { date '+%H:%M'; }
+
+pending_count() {
+  grep -c '^pending ' "$TASKS" 2>/dev/null
+  return 0
+}
+
+current_focus() {
+  local f
+  f=$(cat "$FOCUS" 2>/dev/null)
+  echo "$f"
+}
+
+relative_time() {
+  local ts="$1"
+  [[ -z "$ts" ]] && return
+  local now_sec ts_sec diff
+  now_sec=$(date +%s)
+  ts_sec=$(date -d "$ts" +%s 2>/dev/null) || return
+  diff=$(( (now_sec - ts_sec) / 60 ))
+  if   (( diff < 2 ));    then echo "just now"
+  elif (( diff < 60 ));   then echo "${diff}m ago"
+  elif (( diff < 1440 )); then echo "$(( diff / 60 ))h ago"
+  else                         echo "$(( diff / 1440 ))d ago"
+  fi
+}
+
+# ── Dashboard ──────────────────────────────────────────────────────────────────
+cmd_dash() {
+  local focus pending note note_ts note_age
+  focus=$(current_focus)
+  pending=$(pending_count)
+  note=$(tail -1 "$NOTES" 2>/dev/null | cut -d'|' -f2-)
+  note_ts=$(tail -1 "$NOTES" 2>/dev/null | cut -d'|' -f1)
+  note_age=$(relative_time "$note_ts")
+
+  echo -e "$HR"
+  echo -e "  ${C}${B}lt${N}  ${D}·${N}  ${W}$(whoami)${N}"
+  echo -e "  ${D}$(today)  ·  $(clock)${N}"
+  echo -e "$HR"
+
+  if [[ -n "$focus" ]]; then
+    echo -e "  ${C}focus${N}   $focus"
+  else
+    echo -e "  ${C}focus${N}   ${D}nothing set — lt do \"task\"${N}"
+  fi
+
+  if (( pending > 0 )); then
+    echo -e "  ${C}tasks${N}   ${pending} pending"
+  else
+    echo -e "  ${C}tasks${N}   ${D}clear${N}"
+  fi
+
+  if [[ -n "$note" ]]; then
+    echo -e "  ${C}notes${N}   ${D}\"${note}\"  ·  ${note_age}${N}"
+  else
+    echo -e "  ${C}notes${N}   ${D}nothing yet${N}"
+  fi
+
+  echo -e "$HR"
+}
+
+# ── do: add a task ─────────────────────────────────────────────────────────────
+cmd_do() {
+  local task="$*"
+  if [[ -z "$task" ]]; then
+    echo -e "${R}usage:${N} lt do \"task description\""; exit 1
+  fi
+  echo "pending $task" >> "$TASKS"
+  if [[ -z "$(current_focus)" ]]; then
+    echo "$task" > "$FOCUS"
+    echo -e "${C}+${N} $task  ${D}(now in focus)${N}"
+  else
+    echo -e "${C}+${N} $task"
+  fi
+}
+
+# ── done: mark focus complete, advance ─────────────────────────────────────────
+cmd_done() {
+  local focus
+  focus=$(current_focus)
+  if [[ -z "$focus" ]]; then
+    echo -e "${D}nothing in focus${N}"; exit 0
+  fi
+  # Escape special chars for sed
+  local escaped
+  escaped=$(printf '%s\n' "$focus" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  sed -i "s|^pending ${escaped}$|done ${focus}|" "$TASKS"
+  echo -e "${G}✓${N}  $focus"
+  # Advance to next pending
+  local next
+  next=$(grep '^pending ' "$TASKS" | head -1 | cut -d' ' -f2-)
+  if [[ -n "$next" ]]; then
+    echo "$next" > "$FOCUS"
+    echo -e "${C}→${N}  $next"
+  else
+    > "$FOCUS"
+    echo -e "${D}all clear${N}"
+  fi
+}
+
+# ── focus: show current focus ──────────────────────────────────────────────────
+cmd_focus() {
+  local focus
+  focus=$(current_focus)
+  if [[ -n "$focus" ]]; then
+    echo -e "${C}→${N}  $focus"
+  else
+    echo -e "${D}nothing in focus${N}"
+  fi
+}
+
+# ── set: manually set focus without adding to task list ───────────────────────
+cmd_set() {
+  local task="$*"
+  if [[ -z "$task" ]]; then
+    echo -e "${R}usage:${N} lt set \"what to focus on\""; exit 1
+  fi
+  echo "$task" > "$FOCUS"
+  echo -e "${C}→${N}  $task"
+}
+
+# ── tasks: list all ────────────────────────────────────────────────────────────
+cmd_tasks() {
+  local pending done_items focus
+  focus=$(current_focus)
+  pending=$(grep '^pending ' "$TASKS" 2>/dev/null)
+  done_items=$(grep '^done ' "$TASKS" 2>/dev/null)
+
+  if [[ -z "$pending" && -z "$done_items" ]]; then
+    echo -e "${D}no tasks${N}"; return
+  fi
+
+  echo -e "$HR"
+  if [[ -n "$pending" ]]; then
+    echo -e "  ${C}pending${N}"
+    while IFS= read -r line; do
+      local t="${line#pending }"
+      if [[ "$t" == "$focus" ]]; then
+        echo -e "  ${C}→${N}  $t"
+      else
+        echo -e "  ${D}·${N}  $t"
+      fi
+    done <<< "$pending"
+  fi
+  if [[ -n "$done_items" ]]; then
+    echo -e "  ${D}done${N}"
+    while IFS= read -r line; do
+      echo -e "  ${D}✓  ${line#done }${N}"
+    done <<< "$done_items"
+  fi
+  echo -e "$HR"
+}
+
+# ── note: save a timestamped note ─────────────────────────────────────────────
+cmd_note() {
+  local text="$*"
+  if [[ -z "$text" ]]; then
+    echo -e "${R}usage:${N} lt note \"your note\""; exit 1
+  fi
+  echo "$(now)|$text" >> "$NOTES"
+  echo -e "${C}·${N}  saved"
+}
+
+# ── notes: show last 10 ────────────────────────────────────────────────────────
+cmd_notes() {
+  if [[ ! -s "$NOTES" ]]; then
+    echo -e "${D}no notes yet${N}"; return
+  fi
+  echo -e "$HR"
+  echo -e "  ${C}notes${N}"
+  tail -10 "$NOTES" | while IFS='|' read -r ts text; do
+    local age
+    age=$(relative_time "$ts")
+    echo -e "  ${D}${age}${N}  $text"
+  done
+  echo -e "$HR"
+}
+
+# ── drop: remove a task by partial match ──────────────────────────────────────
+cmd_drop() {
+  local pattern="$*"
+  if [[ -z "$pattern" ]]; then
+    echo -e "${R}usage:${N} lt drop \"partial task name\""; exit 1
+  fi
+  local match
+  match=$(grep -i "^pending .*${pattern}" "$TASKS" | head -1 | cut -d' ' -f2-)
+  if [[ -z "$match" ]]; then
+    echo -e "${D}no pending task matching: ${pattern}${N}"; exit 1
+  fi
+  local escaped
+  escaped=$(printf '%s\n' "$match" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  sed -i "/^pending ${escaped}$/d" "$TASKS"
+  echo -e "${R}-${N}  $match"
+  # Clear focus if it was this task
+  if [[ "$(current_focus)" == "$match" ]]; then
+    local next
+    next=$(grep '^pending ' "$TASKS" | head -1 | cut -d' ' -f2-)
+    if [[ -n "$next" ]]; then
+      echo "$next" > "$FOCUS"
+      echo -e "${C}→${N}  $next"
+    else
+      > "$FOCUS"
+    fi
+  fi
+}
+
+# ── clear: remove completed tasks ─────────────────────────────────────────────
+cmd_clear() {
+  local count
+  count=$(grep -c '^done ' "$TASKS" 2>/dev/null || echo 0)
+  sed -i '/^done /d' "$TASKS"
+  echo -e "${D}cleared ${count} completed task(s)${N}"
+}
+
+# ── help ───────────────────────────────────────────────────────────────────────
+cmd_help() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}lt${N}  —  your daily lieutenant"
+  echo -e "$HR"
+  echo -e "  ${W}lt${N}                  dashboard: focus, tasks, latest note"
+  echo -e "  ${W}lt do${N} \"task\"        add a task  (sets focus if empty)"
+  echo -e "  ${W}lt done${N}             mark focus complete, advance to next"
+  echo -e "  ${W}lt focus${N}            show current focus item"
+  echo -e "  ${W}lt set${N} \"task\"       set focus without adding to list"
+  echo -e "  ${W}lt tasks${N}            list all pending and completed tasks"
+  echo -e "  ${W}lt drop${N} \"partial\"   remove a pending task by name"
+  echo -e "  ${W}lt clear${N}            remove all completed tasks"
+  echo -e "  ${W}lt note${N} \"text\"      save a timestamped note"
+  echo -e "  ${W}lt notes${N}            show last 10 notes"
+  echo -e "  ${W}lt help${N}             this screen"
+  echo -e "$HR"
+  echo -e "  ${D}data  ~/.local/share/lt/${N}"
+  echo -e "$HR"
+}
+
+# ── router ─────────────────────────────────────────────────────────────────────
+case "${1:-}" in
+  do)            shift; cmd_do "$@" ;;
+  done)          cmd_done ;;
+  focus)         cmd_focus ;;
+  set)           shift; cmd_set "$@" ;;
+  tasks|task)    cmd_tasks ;;
+  note)          shift; cmd_note "$@" ;;
+  notes)         cmd_notes ;;
+  drop)          shift; cmd_drop "$@" ;;
+  clear)         cmd_clear ;;
+  help|-h|--help) cmd_help ;;
+  '')            cmd_dash ;;
+  *)             echo -e "${R}unknown:${N} $1  —  try ${C}lt help${N}"; exit 1 ;;
+esac
