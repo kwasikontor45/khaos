@@ -211,6 +211,57 @@ cmd_setup() {
   echo -e "$HR"
 }
 
+# ── Expo ───────────────────────────────────────────────────────────────────────
+cmd_expo() {
+  local KATALEYA="$HOME/kataleya/artifacts/kataleya-app"
+
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc expo${N}  —  kataleya dev server"
+  echo -e "$HR\n"
+
+  # Kill stale Metro on 8081
+  local stale
+  stale=$(lsof -ti :8081 2>/dev/null || true)
+  if [[ -n "$stale" ]]; then
+    echo -e "${Y}clearing stale Metro on 8081...${N}"
+    echo "$stale" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
+
+  # Kill stale cloudflared
+  pkill -f "cloudflared tunnel" 2>/dev/null || true
+  sleep 1
+
+  # Start cloudflared quick tunnel in background, capture URL from stderr
+  echo -e "${C}starting cloudflare tunnel...${N}"
+  local CF_LOG
+  CF_LOG=$(mktemp)
+  cloudflared tunnel --url http://localhost:8081 --no-autoupdate 2>"$CF_LOG" &
+  local CF_PID=$!
+
+  # Wait for tunnel URL — up to 30s
+  local TUNNEL_URL=""
+  for i in $(seq 1 30); do
+    TUNNEL_URL=$(grep -o 'https://[a-zA-Z0-9._-]*\.trycloudflare\.com' "$CF_LOG" 2>/dev/null | head -1 || true)
+    [[ -n "$TUNNEL_URL" ]] && break
+    sleep 1
+  done
+
+  rm -f "$CF_LOG"
+
+  if [[ -z "$TUNNEL_URL" ]]; then
+    echo -e "${R}cloudflared failed to start${N}  —  check: cloudflared --version"
+    kill $CF_PID 2>/dev/null || true
+    exit 1
+  fi
+
+  echo -e "${G}tunnel${N}  $TUNNEL_URL\n"
+  echo -e "${C}starting Expo...${N}"
+  echo -e "$HR\n"
+
+  cd "$KATALEYA" && EXPO_PACKAGER_PROXY_URL=$TUNNEL_URL pnpm expo start --localhost
+}
+
 # ── Help ───────────────────────────────────────────────────────────────────────
 cmd_help() {
   echo -e "$HR"
@@ -221,6 +272,7 @@ cmd_help() {
   echo -e "  ${W}arc clean${N}     deep clean: user cache, tmp, apt"
   echo -e "  ${W}arc audit${N}     full git audit: fetch, status, ahead/behind"
   echo -e "  ${W}arc setup${N}     first-time git identity + ssh key"
+  echo -e "  ${W}arc expo${N}      kataleya dev server — ngrok + Expo, one command"
   echo -e "  ${W}arc help${N}      this screen"
   echo -e "$HR"
 }
@@ -231,6 +283,7 @@ case "${1:-}" in
   clean)          cmd_clean ;;
   audit)          cmd_audit ;;
   setup)          cmd_setup ;;
+  expo)           cmd_expo ;;
   help|-h|--help) cmd_help ;;
   '')             cmd_status ;;
   *)              echo -e "${R}unknown:${N} $1  —  try ${C}arc help${N}"; exit 1 ;;

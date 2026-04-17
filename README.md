@@ -52,6 +52,7 @@ arc update            apt update + upgrade + clean
 arc clean             deep clean: user cache, tmp, apt
 arc audit             full git audit: fetch, status, ahead/behind
 arc setup             first-time git identity + ssh key
+arc expo              kataleya dev server — ngrok + Expo, one command
 arc help              full help
 ```
 
