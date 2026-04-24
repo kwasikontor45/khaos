@@ -228,38 +228,66 @@ cmd_expo() {
     sleep 1
   fi
 
-  # Kill stale cloudflared
-  pkill -f "cloudflared tunnel" 2>/dev/null || true
-  sleep 1
-
-  # Start cloudflared quick tunnel in background, capture URL from stderr
-  echo -e "${C}starting cloudflare tunnel...${N}"
-  local CF_LOG
-  CF_LOG=$(mktemp)
-  cloudflared tunnel --url http://localhost:8081 --no-autoupdate 2>"$CF_LOG" &
-  local CF_PID=$!
-
-  # Wait for tunnel URL — up to 30s
-  local TUNNEL_URL=""
-  for i in $(seq 1 30); do
-    TUNNEL_URL=$(grep -o 'https://[a-zA-Z0-9._-]*\.trycloudflare\.com' "$CF_LOG" 2>/dev/null | head -1 || true)
-    [[ -n "$TUNNEL_URL" ]] && break
-    sleep 1
-  done
-
-  rm -f "$CF_LOG"
-
-  if [[ -z "$TUNNEL_URL" ]]; then
-    echo -e "${R}cloudflared failed to start${N}  —  check: cloudflared --version"
-    kill $CF_PID 2>/dev/null || true
-    exit 1
-  fi
-
-  echo -e "${G}tunnel${N}  $TUNNEL_URL\n"
   echo -e "${C}starting Expo...${N}"
   echo -e "$HR\n"
 
-  cd "$KATALEYA" && EXPO_PACKAGER_PROXY_URL=$TUNNEL_URL pnpm expo start --localhost
+  cd "$KATALEYA" && EXPO_DEBUG=1 pnpm expo start --tunnel --clear
+}
+
+# ── Ref ────────────────────────────────────────────────────────────────────────
+cmd_ref() {
+  local ARCHIVE="$HOME/archive"
+  local query="${1:-}"
+
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc ref${N}  —  archived references"
+  echo -e "$HR"
+
+  if [[ ! -d "$ARCHIVE" ]]; then
+    echo -e "  ${R}archive not found:${N} $ARCHIVE"
+    echo -e "$HR"
+    return 1
+  fi
+
+  if [[ -z "$query" ]]; then
+    echo ""
+    find "$ARCHIVE" -type f | sort | while IFS= read -r f; do
+      local size rel
+      size=$(wc -c < "$f" 2>/dev/null | tr -d ' ')
+      rel="${f#$ARCHIVE/}"
+      printf "  ${D}·${N}  %-48s  ${D}%s b${N}\n" "$rel" "$size"
+    done
+    echo ""
+    echo -e "  ${D}arc ref <name>     — view a file by name${N}"
+    echo -e "  ${D}arc ref <keyword>  — search across all files${N}"
+  else
+    # Exact or partial filename match first
+    local match
+    match=$(find "$ARCHIVE" -type f -name "*${query}*" 2>/dev/null | head -1)
+    if [[ -n "$match" ]]; then
+      local rel="${match#$ARCHIVE/}"
+      echo -e "\n  ${G}${rel}${N}\n"
+      echo -e "$HR"
+      case "$match" in
+        *.docx|*.doc) echo -e "  ${D}binary — open manually:${N}\n  ${match}" ;;
+        *)            cat "$match" ;;
+      esac
+    else
+      # Search file contents
+      echo -e "\n  ${C}searching: ${query}${N}\n"
+      local hit=0
+      while IFS= read -r f; do
+        hit=1
+        local rel="${f#$ARCHIVE/}"
+        echo -e "  ${D}·${N}  ${W}${rel}${N}"
+        grep -n "$query" "$f" 2>/dev/null | head -3 | while IFS= read -r line; do
+          echo -e "       ${D}${line}${N}"
+        done
+      done < <(grep -rl "$query" "$ARCHIVE" 2>/dev/null)
+      (( hit == 0 )) && echo -e "  ${D}nothing found for: ${query}${N}"
+    fi
+  fi
+  echo -e "$HR"
 }
 
 # ── Help ───────────────────────────────────────────────────────────────────────
@@ -267,13 +295,15 @@ cmd_help() {
   echo -e "$HR"
   echo -e "  ${C}${B}arc${N}  —  your system architect"
   echo -e "$HR"
-  echo -e "  ${W}arc${N}           status: disk usage + repo overview"
-  echo -e "  ${W}arc update${N}    apt update + upgrade + clean"
-  echo -e "  ${W}arc clean${N}     deep clean: user cache, tmp, apt"
-  echo -e "  ${W}arc audit${N}     full git audit: fetch, status, ahead/behind"
-  echo -e "  ${W}arc setup${N}     first-time git identity + ssh key"
-  echo -e "  ${W}arc expo${N}      kataleya dev server — ngrok + Expo, one command"
-  echo -e "  ${W}arc help${N}      this screen"
+  echo -e "  ${W}arc${N}              status: disk usage + repo overview"
+  echo -e "  ${W}arc update${N}       apt update + upgrade + clean"
+  echo -e "  ${W}arc clean${N}        deep clean: user cache, tmp, apt"
+  echo -e "  ${W}arc audit${N}        full git audit: fetch, status, ahead/behind"
+  echo -e "  ${W}arc setup${N}        first-time git identity + ssh key"
+  echo -e "  ${W}arc expo${N}         kataleya dev server — Expo tunnel, one command"
+  echo -e "  ${W}arc ref${N}          list archived references"
+  echo -e "  ${W}arc ref <name>${N}   view archived file by name or keyword"
+  echo -e "  ${W}arc help${N}         this screen"
   echo -e "$HR"
 }
 
@@ -284,6 +314,7 @@ case "${1:-}" in
   audit)          cmd_audit ;;
   setup)          cmd_setup ;;
   expo)           cmd_expo ;;
+  ref)            cmd_ref "${2:-}" ;;
   help|-h|--help) cmd_help ;;
   '')             cmd_status ;;
   *)              echo -e "${R}unknown:${N} $1  —  try ${C}arc help${N}"; exit 1 ;;

@@ -1,4 +1,4 @@
-# kripts
+# khaos
 
 Personal command-line tools. Portable bash — runs on any Linux.
 
@@ -7,9 +7,10 @@ Personal command-line tools. Portable bash — runs on any Linux.
 ## install
 
 ```bash
-git clone git@github.com:kwasikontor45/kripts.git ~/kripts
-cp ~/kripts/lt ~/kripts/arc ~/bin/
-chmod +x ~/bin/lt ~/bin/arc
+git clone git@github.com:kwasikontor45/khaos.git ~/khaos
+ln -s ~/khaos/arc ~/bin/arc
+ln -s ~/khaos/lt ~/bin/lt
+chmod +x ~/khaos/arc ~/khaos/lt
 ```
 
 Make sure `~/bin` is in your PATH. If not, add this to `~/.zshrc` or `~/.bashrc`:
@@ -17,6 +18,8 @@ Make sure `~/bin` is in your PATH. If not, add this to `~/.zshrc` or `~/.bashrc`
 ```bash
 export PATH="$HOME/bin:$PATH"
 ```
+
+After that, `~/bin/arc` and `~/bin/lt` are symlinks — edits in `~/khaos/` take effect immediately. No sync step needed.
 
 ---
 
@@ -52,7 +55,9 @@ arc update            apt update + upgrade + clean
 arc clean             deep clean: user cache, tmp, apt
 arc audit             full git audit: fetch, status, ahead/behind
 arc setup             first-time git identity + ssh key
-arc expo              kataleya dev server — ngrok + Expo, one command
+arc expo              kataleya dev server — Expo tunnel + debug, one command
+arc ref               list archived reference files
+arc ref <name>        view archived file by name or keyword search
 arc help              full help
 ```
 
@@ -60,10 +65,6 @@ arc help              full help
 
 ## philosophy
 
-Two tools. One for you, one for the machine.  
-Pure bash. No dependencies beyond standard Unix.  
+Two tools. One for you, one for the machine.
+Pure bash. No dependencies beyond standard Unix.
 Runs anywhere Linux runs.
-
----
-
-*part of the kontor.studio toolkit*

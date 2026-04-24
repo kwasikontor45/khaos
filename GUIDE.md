@@ -1,4 +1,4 @@
-# kripts guide
+# khaos guide
 ## lt + arc — how to actually use these
 
 ---
@@ -36,16 +36,16 @@ Nothing encrypted, nothing proprietary. You can read, edit, and back these up wi
 **Morning (or start of a session):**
 ```bash
 lt                          # see dashboard: what's in focus, how many tasks, last note
-lt do "fix HoldToConfirm"   # add today's first task — it auto-sets as focus
-lt do "test cover screen"   # add the next one
-lt do "push to main"        # and the next
+lt do "write the new module" # add today's first task — it auto-sets as focus
+lt do "test on device"       # add the next one
+lt do "push to demo"         # and the next
 lt tasks                    # confirm the list looks right
 ```
 
 **While working:**
 ```bash
 lt focus                    # quick reminder of what you're supposed to be doing
-lt note "tried disabling ScrollView — still flaky"   # capture a thought without losing flow
+lt note "tried X — still flaky"   # capture a thought without losing flow
 ```
 
 **When you finish a task:**
@@ -64,30 +64,30 @@ lt clear                    # remove completed tasks to keep the list clean
 ### use case scenarios
 
 **Scenario 1 — deep work session**
-You sit down to do bug surgery. Three known bugs.
+You sit down to work. Three things to do.
 ```bash
-lt do "fix Override pill animation loop"
-lt do "fix HoldToConfirm inside ScrollView"
-lt do "investigate ECG/wave conflict"
-lt focus        # → fix Override pill animation loop
+lt do "write conversation inference logic"
+lt do "test on device"
+lt do "push to demo"
+lt focus        # → write conversation inference logic
 ```
-Work. Fix the bug. Test it.
+Work. Finish it.
 ```bash
-lt done         # → HoldToConfirm is now in focus
+lt done         # → test on device is now in focus
 ```
 You don't have to remember what's next. lt does.
 
 **Scenario 2 — interrupted mid-task**
 Someone messages you. You handle it. Twenty minutes pass.
 ```bash
-lt focus        # → fix HoldToConfirm inside ScrollView
+lt focus        # → test on device
 ```
 You're back.
 
 **Scenario 3 — capturing a decision mid-flow**
 You're in the middle of coding and realize something important.
 ```bash
-lt note "ScrollView needs scrollEnabled=false during hold — not just Pressable"
+lt note "need to disable scroll during hold — not just Pressable wrapper"
 ```
 One line. No app-switching. No lost thought. Continue.
 
@@ -103,7 +103,7 @@ lt clear        # clear the done items
 ### mistakes to avoid
 
 **Adding too many tasks**  
-lt is not a backlog. If you add 15 tasks, the focus concept collapses. Keep it to what you can realistically do today — 3 to 6 items maximum. Everything else lives in your project tracker (GitHub issues, Notion, wherever).
+lt is not a backlog. If you add 15 tasks, the focus concept collapses. Keep it to what you can realistically do today — 3 to 6 items maximum. Everything else lives in your project tracker.
 
 **Using it as a calendar**  
 lt has no dates, no deadlines, no scheduling. It only knows "pending" and "done." If a task has a specific due date, put it in your calendar too.
@@ -115,7 +115,7 @@ Completed tasks accumulate and the list becomes noise. Clear after each session 
 `lt done` advances focus automatically. Trust it. Only use `lt set` when you genuinely need to jump out of order — not as a habit.
 
 **Using notes as a substitute for real documentation**  
-Notes are ephemeral captures — thoughts you want to keep for the session. If a note contains a decision that matters long-term, move it somewhere permanent (git commit message, CLAUDE.md, etc.).
+Notes are ephemeral captures. If a note contains a decision that matters long-term, move it somewhere permanent (git commit message, project docs, etc.).
 
 ---
 
@@ -153,7 +153,7 @@ lt help               this in the terminal
 
 ### what it is
 
-System maintenance and repository oversight. It knows about your disks, your git repos, and (now) your Kataleya dev environment. It does not touch your code — it just tells you the state of things and handles housekeeping you'd otherwise forget.
+System maintenance and repository oversight. It knows about your disks, your git repos, your Kataleya dev environment, and your archived reference files. It does not touch your code — it tells you the state of things and handles housekeeping you'd otherwise forget.
 
 ---
 
@@ -167,7 +167,9 @@ System maintenance and repository oversight. It knows about your disks, your git
 
 **`arc clean`** — deep clean. Clears `~/.cache`, `/tmp`, and apt debris. Run monthly or when disk is tight. Check `arc` first to see current disk usage, then run `arc clean`, then `arc` again to see what was reclaimed.
 
-**`arc expo`** — Kataleya dev server. Run this instead of manually managing ngrok and Expo. It handles everything: kills stale processes, starts ngrok, waits for the tunnel URL, launches Expo with the URL wired in. See dedicated section below.
+**`arc expo`** — Kataleya dev server. Kills stale Metro on port 8081, then starts Expo with tunnel and debug output enabled. One command. See dedicated section below.
+
+**`arc ref`** — archived reference files. Lists everything in `~/archive/`. `arc ref <name>` opens a file by name or searches across all files by keyword.
 
 **`arc setup`** — first-time only. Git identity + SSH key generation. Only needed on a fresh machine.
 
@@ -175,33 +177,39 @@ System maintenance and repository oversight. It knows about your disks, your git
 
 ### arc expo — how it works and when to use it
 
-The problem it solves: Expo's built-in `--tunnel` uses an old version of ngrok that conflicts with the system-installed ngrok v3. The two can't run together. `arc expo` bypasses Expo's tunnel entirely and manages ngrok directly.
+One command starts the Kataleya dev server with debug output.
 
 **What it does, in order:**
 1. Kills any stale Metro process on port 8081
-2. Kills any running ngrok tunnel
-3. Starts a fresh ngrok tunnel pointing at port 8081
-4. Polls the ngrok local API (at `127.0.0.1:4040`) until it gets the public HTTPS URL
-5. Starts Expo with `EXPO_PACKAGER_PROXY_URL` set to that URL
-6. Expo generates a QR code using the ngrok URL — scan it in Expo Go
+2. Starts Expo with `EXPO_DEBUG=1 pnpm expo start --tunnel --clear`
+3. QR code appears in terminal — scan with Expo Go
 
 **Normal session flow:**
 ```bash
-arc expo              # one command — wait ~10 seconds for "tunnel: https://..."
-                      # QR appears — scan with Expo Go
-                      # done
+arc expo          # one command — Expo starts with tunnel + debug
+                  # QR appears — scan with Expo Go
 ```
 
-**When the tunnel URL changes between sessions:**  
-Every time you run `arc expo`, ngrok generates a new random URL (free plan). That is expected. Expo Go needs to rescan the new QR each session. There is no way around this on the free plan without a paid ngrok account with static domains.
+**If Metro hangs or port 8081 is busy:**  
+`arc expo` clears it automatically before starting.
 
-**If it hangs waiting for ngrok:**  
-The script waits up to 20 seconds. If it prints "ngrok failed to start," check:
-- `ngrok` is installed: `which ngrok`
-- ngrok authtoken is set: `cat ~/.ngrok2/ngrok.yml` or `cat ~/.config/ngrok/ngrok.yml`
-- Port 4040 (ngrok's local API) isn't blocked: `curl http://127.0.0.1:4040/api/tunnels`
+**If the QR stops working between sessions:**  
+The tunnel URL changes each session. Rescan the QR. Expected behavior.
 
-**Do not run `pnpm expo start --tunnel` directly.** That path uses `@expo/ngrok` which conflicts with the system ngrok. Always use `arc expo`.
+---
+
+### arc ref — working with your archive
+
+Files moved out of the home directory live in `~/archive/`. `arc ref` is how you find them without remembering where anything is.
+
+```bash
+arc ref                       # list everything in the archive
+arc ref vacuum                # open a file whose name contains "vacuum"
+arc ref "SOC Playbook"        # search filenames and contents
+arc ref cleanup               # keyword search across all text files
+```
+
+Binary files (`.docx`, `.doc`) are flagged with their path — open them manually.
 
 ---
 
@@ -244,7 +252,14 @@ cd ~/kataleya && git pull
 arc             # clean bill of health
 ```
 
-**Scenario 4 — expo won't start, port is busy**
+**Scenario 4 — looking up an old reference**
+```bash
+arc ref                       # browse the archive
+arc ref "playbook"            # find the SOC playbook files
+arc ref "sanitize"            # find any script that mentions sanitize
+```
+
+**Scenario 5 — expo won't start, port is busy**
 ```bash
 arc expo        # handles it automatically — clears 8081 before starting
 ```
@@ -269,18 +284,19 @@ The script kills port 8081, so it will terminate any running Metro process. If y
 
 ### is it safe on a public repo?
 
-Yes. Neither file contains credentials, tokens, API keys, or personal data. The only project-specific content is the hardcoded path `$HOME/kataleya/artifacts/kataleya-app` in `arc expo` — which is a file path, not a secret. Safe to push and share.
+Yes. Neither `arc` nor `lt` contains credentials, tokens, API keys, or personal data. The only project-specific content is the hardcoded path `$HOME/kataleya/artifacts/kataleya-app` in `arc expo` — a file path, not a secret. Safe to push and share.
 
-The data `lt` stores (`~/.local/share/lt/`) never touches the repo — it's local-only.
+The data `lt` stores (`~/.local/share/lt/`) and the archive (`~/archive/`) never touch the repo — both are local-only.
 
 ---
 
 ## installing on a new machine
 
 ```bash
-git clone git@github.com:kwasikontor45/kripts.git ~/khaos
-cp ~/khaos/lt ~/khaos/arc ~/bin/
-chmod +x ~/bin/lt ~/bin/arc
+git clone git@github.com:kwasikontor45/khaos.git ~/khaos
+ln -s ~/khaos/arc ~/bin/arc
+ln -s ~/khaos/lt ~/bin/lt
+chmod +x ~/khaos/arc ~/khaos/lt
 ```
 
 Make sure `~/bin` is in PATH. If not, add to `~/.zshrc`:
@@ -293,6 +309,8 @@ Then:
 arc setup       # git identity + SSH key if needed
 lt              # dashboard should show clean state
 ```
+
+Symlinks mean `~/bin/arc` and `~/bin/lt` always reflect the current state of `~/khaos/`. No copy step needed after updates — edit in khaos, commit, push.
 
 ---
 

@@ -190,6 +190,25 @@ cmd_note() {
   echo -e "${C}·${N}  saved"
 }
 
+# ── note drop: remove a note by partial match ─────────────────────────────────
+cmd_note_drop() {
+  local pattern="$*"
+  if [[ -z "$pattern" ]]; then
+    echo -e "${R}usage:${N} lt note drop \"partial text\""; exit 1
+  fi
+  local match
+  match=$(grep -i "${pattern}" "$NOTES" | head -1)
+  if [[ -z "$match" ]]; then
+    echo -e "${D}no note matching: ${pattern}${N}"; exit 1
+  fi
+  local text
+  text=$(echo "$match" | cut -d'|' -f2-)
+  local escaped
+  escaped=$(printf '%s\n' "$match" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  sed -i "/${escaped}/d" "$NOTES"
+  echo -e "${R}-${N}  $text"
+}
+
 # ── notes: show last 10 ────────────────────────────────────────────────────────
 cmd_notes() {
   if [[ ! -s "$NOTES" ]]; then
@@ -255,6 +274,7 @@ cmd_help() {
   echo -e "  ${W}lt drop${N} \"partial\"   remove a pending task by name"
   echo -e "  ${W}lt clear${N}            remove all completed tasks"
   echo -e "  ${W}lt note${N} \"text\"      save a timestamped note"
+  echo -e "  ${W}lt note drop${N} \"partial\"  remove a note by partial text match"
   echo -e "  ${W}lt notes${N}            show last 10 notes"
   echo -e "  ${W}lt help${N}             this screen"
   echo -e "$HR"
@@ -269,7 +289,9 @@ case "${1:-}" in
   focus)         cmd_focus ;;
   set)           shift; cmd_set "$@" ;;
   tasks|task)    cmd_tasks ;;
-  note)          shift; cmd_note "$@" ;;
+  note)          shift;
+                 if [[ "${1:-}" == "drop" ]]; then shift; cmd_note_drop "$@";
+                 else cmd_note "$@"; fi ;;
   notes)         cmd_notes ;;
   drop)          shift; cmd_drop "$@" ;;
   clear)         cmd_clear ;;
