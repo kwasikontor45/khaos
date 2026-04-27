@@ -193,17 +193,23 @@ cmd_setup() {
     grep -qxF "$entry" ~/.gitignore_global 2>/dev/null || echo "$entry" >> ~/.gitignore_global
   done
 
+  local key_is_new=0
   if [[ ! -f ~/.ssh/id_ed25519 ]]; then
     echo -e "\n${C}generating ssh key (ed25519)...${N}"
     ssh-keygen -t ed25519 -C "$git_email" -f ~/.ssh/id_ed25519 -N ""
     eval "$(ssh-agent -s)"
     ssh-add ~/.ssh/id_ed25519
+    key_is_new=1
   else
     echo -e "\n${D}ssh key already exists — skipping keygen${N}"
   fi
 
   echo -e "\n$HR"
-  echo -e "  ${C}add this key to github.com › Settings › SSH keys${N}"
+  if (( key_is_new )); then
+    echo -e "  ${C}add this key to github.com › Settings › SSH keys${N}"
+  else
+    echo -e "  ${D}your existing key — only add to GitHub if not already done${N}"
+  fi
   echo -e "$HR"
   cat ~/.ssh/id_ed25519.pub
   echo -e "$HR"
