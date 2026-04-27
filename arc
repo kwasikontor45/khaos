@@ -258,7 +258,7 @@ cmd_ref() {
     echo -e "  ${D}mkdir ~/archive${N}"
     echo -e ""
     echo -e "  or point arc at an existing folder:"
-    echo -e "  ${D}export ARC_REF_DIR=\"\$HOME/your-folder\"  # add to ~/.zshrc${N}"
+    echo -e "  ${D}export ARC_REF_DIR=\"\$HOME/your-folder\"  # add to ~/.zshrc or ~/.bashrc${N}"
     echo -e "$HR"
     return 1
   fi
