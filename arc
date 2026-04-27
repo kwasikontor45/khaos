@@ -244,7 +244,7 @@ cmd_expo() {
 
 # ── Ref ────────────────────────────────────────────────────────────────────────
 cmd_ref() {
-  local ARCHIVE="$HOME/archive"
+  local ARCHIVE="${ARC_REF_DIR:-$HOME/archive}"
   local query="${1:-}"
 
   echo -e "$HR"

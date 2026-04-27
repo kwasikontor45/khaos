@@ -169,7 +169,7 @@ System maintenance and repository oversight. It knows about your disks, your git
 
 **`arc expo`** — Expo dev server. Kills stale Metro on port 8081, then starts Expo with tunnel and debug output enabled. Requires `ARC_EXPO_DIR` set in your shell config. One command. See dedicated section below.
 
-**`arc ref`** — archived reference files. Lists everything in `~/archive/`. `arc ref <name>` opens a file by name or searches across all files by keyword.
+**`arc ref`** — archived reference files. Lists everything in your archive directory (`~/archive` by default, or set `ARC_REF_DIR` in your shell config). `arc ref <name>` opens a file by name or searches across all files by keyword.
 
 **`arc setup`** — first-time only. Git identity + SSH key generation. Only needed on a fresh machine.
 

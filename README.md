@@ -77,9 +77,10 @@ arc ref <name>        view archived file by name or keyword search
 arc help              full help
 ```
 
-For `arc expo`, set the path to your Expo project:
+Optional env vars — add to your shell config to customise:
 ```bash
-export ARC_EXPO_DIR="/path/to/your/expo/project"
+export ARC_EXPO_DIR="/path/to/your/expo/project"  # required for arc expo
+export ARC_REF_DIR="$HOME/.refs"                  # default: ~/archive
 ```
 
 ---
