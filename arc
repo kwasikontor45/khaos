@@ -221,7 +221,7 @@ cmd_expo() {
 
   if [[ -z "$PROJECT_DIR" ]]; then
     echo -e "  ${R}ARC_EXPO_DIR is not set${N}"
-    echo -e "  ${D}add to your shell config:${N}"
+    echo -e "  ${D}add to ~/.zshrc or ~/.bashrc:${N}"
     echo -e "  ${D}export ARC_EXPO_DIR=\"/path/to/your/expo/project\"${N}"
     echo -e "$HR"
     return 1
