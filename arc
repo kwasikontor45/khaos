@@ -213,11 +213,19 @@ cmd_setup() {
 
 # ── Expo ───────────────────────────────────────────────────────────────────────
 cmd_expo() {
-  local KATALEYA="$HOME/kataleya/artifacts/kataleya-app"
+  local PROJECT_DIR="${ARC_EXPO_DIR:-}"
 
   echo -e "$HR"
-  echo -e "  ${C}${B}arc expo${N}  —  kataleya dev server"
+  echo -e "  ${C}${B}arc expo${N}  —  expo dev server"
   echo -e "$HR\n"
+
+  if [[ -z "$PROJECT_DIR" ]]; then
+    echo -e "  ${R}ARC_EXPO_DIR is not set${N}"
+    echo -e "  ${D}add to your shell config:${N}"
+    echo -e "  ${D}export ARC_EXPO_DIR=\"/path/to/your/expo/project\"${N}"
+    echo -e "$HR"
+    return 1
+  fi
 
   # Kill stale Metro on 8081
   local stale
@@ -231,7 +239,7 @@ cmd_expo() {
   echo -e "${C}starting Expo...${N}"
   echo -e "$HR\n"
 
-  cd "$KATALEYA" && EXPO_DEBUG=1 pnpm expo start --tunnel --clear
+  cd "$PROJECT_DIR" && EXPO_DEBUG=1 pnpm expo start --tunnel --clear
 }
 
 # ── Ref ────────────────────────────────────────────────────────────────────────
@@ -300,7 +308,7 @@ cmd_help() {
   echo -e "  ${W}arc clean${N}        deep clean: user cache, tmp, apt"
   echo -e "  ${W}arc audit${N}        full git audit: fetch, status, ahead/behind"
   echo -e "  ${W}arc setup${N}        first-time git identity + ssh key"
-  echo -e "  ${W}arc expo${N}         kataleya dev server — Expo tunnel, one command"
+  echo -e "  ${W}arc expo${N}         expo dev server — set ARC_EXPO_DIR in your shell config"
   echo -e "  ${W}arc ref${N}          list archived references"
   echo -e "  ${W}arc ref <name>${N}   view archived file by name or keyword"
   echo -e "  ${W}arc help${N}         this screen"

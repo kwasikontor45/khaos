@@ -66,10 +66,10 @@ lt clear                    # remove completed tasks to keep the list clean
 **Scenario 1 — deep work session**
 You sit down to work. Three things to do.
 ```bash
-lt do "write conversation inference logic"
+lt do "write the new module"
 lt do "test on device"
 lt do "push to demo"
-lt focus        # → write conversation inference logic
+lt focus        # → write the new module
 ```
 Work. Finish it.
 ```bash
@@ -153,7 +153,7 @@ lt help               this in the terminal
 
 ### what it is
 
-System maintenance and repository oversight. It knows about your disks, your git repos, your Kataleya dev environment, and your archived reference files. It does not touch your code — it tells you the state of things and handles housekeeping you'd otherwise forget.
+System maintenance and repository oversight. It knows about your disks, your git repos, your dev environment, and your archived reference files. It does not touch your code — it tells you the state of things and handles housekeeping you'd otherwise forget.
 
 ---
 
@@ -167,7 +167,7 @@ System maintenance and repository oversight. It knows about your disks, your git
 
 **`arc clean`** — deep clean. Clears `~/.cache`, `/tmp`, and apt debris. Run monthly or when disk is tight. Check `arc` first to see current disk usage, then run `arc clean`, then `arc` again to see what was reclaimed.
 
-**`arc expo`** — Kataleya dev server. Kills stale Metro on port 8081, then starts Expo with tunnel and debug output enabled. One command. See dedicated section below.
+**`arc expo`** — Expo dev server. Kills stale Metro on port 8081, then starts Expo with tunnel and debug output enabled. Requires `ARC_EXPO_DIR` set in your shell config. One command. See dedicated section below.
 
 **`arc ref`** — archived reference files. Lists everything in `~/archive/`. `arc ref <name>` opens a file by name or searches across all files by keyword.
 
@@ -177,12 +177,19 @@ System maintenance and repository oversight. It knows about your disks, your git
 
 ### arc expo — how it works and when to use it
 
-One command starts the Kataleya dev server with debug output.
+One command starts your Expo dev server with debug output.
+
+**Setup (once):**
+```bash
+export ARC_EXPO_DIR="/path/to/your/expo/project"
+```
+Add that line to your `~/.zshrc` or `~/.bashrc`.
 
 **What it does, in order:**
-1. Kills any stale Metro process on port 8081
-2. Starts Expo with `EXPO_DEBUG=1 pnpm expo start --tunnel --clear`
-3. QR code appears in terminal — scan with Expo Go
+1. Checks that `ARC_EXPO_DIR` is set
+2. Kills any stale Metro process on port 8081
+3. Starts Expo with `EXPO_DEBUG=1 pnpm expo start --tunnel --clear`
+4. QR code appears in terminal — scan with Expo Go
 
 **Normal session flow:**
 ```bash
@@ -221,7 +228,7 @@ Binary files (`.docx`, `.doc`) are flagged with their path — open them manuall
 | Weekly | `arc update` | Keep system packages current |
 | After a day away | `arc audit` | Make sure no repo drifted from remote |
 | Monthly | `arc clean` | Reclaim disk from cache and tmp accumulation |
-| When developing Kataleya | `arc expo` | Start the dev server cleanly |
+| When developing with Expo | `arc expo` | Start the dev server cleanly |
 
 ---
 
@@ -230,10 +237,10 @@ Binary files (`.docx`, `.doc`) are flagged with their path — open them manuall
 **Scenario 1 — start of a development day**
 ```bash
 arc             # check disk + repo status
-                # → kataleya [main] clean · 2 ahead · 3h ago
+                # → myproject [main] clean · 2 ahead · 3h ago
                 # → khaos [main] clean · 0 ahead · 1d ago
 arc audit       # quick fetch to make sure nothing has drifted
-arc expo        # start kataleya dev server
+arc expo        # start the Expo dev server
 ```
 
 **Scenario 2 — disk is feeling full**
@@ -247,16 +254,16 @@ arc             # → disk: 15.1G used / 22G total (69%)
 **Scenario 3 — coming back after a week away**
 ```bash
 arc audit       # fetch all repos, check ahead/behind
-                # → kataleya: 0 ahead, 3 behind — consider pulling
-cd ~/kataleya && git pull
+                # → myproject: 0 ahead, 3 behind — consider pulling
+cd ~/myproject && git pull
 arc             # clean bill of health
 ```
 
 **Scenario 4 — looking up an old reference**
 ```bash
 arc ref                       # browse the archive
-arc ref "playbook"            # find the SOC playbook files
-arc ref "sanitize"            # find any script that mentions sanitize
+arc ref "playbook"            # find files whose name contains "playbook"
+arc ref "sanitize"            # find any file that mentions sanitize
 ```
 
 **Scenario 5 — expo won't start, port is busy**
@@ -282,35 +289,44 @@ The script kills port 8081, so it will terminate any running Metro process. If y
 
 ---
 
-### is it safe on a public repo?
-
-Yes. Neither `arc` nor `lt` contains credentials, tokens, API keys, or personal data. The only project-specific content is the hardcoded path `$HOME/kataleya/artifacts/kataleya-app` in `arc expo` — a file path, not a secret. Safe to push and share.
-
-The data `lt` stores (`~/.local/share/lt/`) and the archive (`~/archive/`) never touch the repo — both are local-only.
-
----
-
 ## installing on a new machine
 
+Pick whichever method works for you. All three end the same way.
+
+**Option 1 — SSH**
 ```bash
 git clone git@github.com:kwasikontor45/khaos.git ~/khaos
-ln -s ~/khaos/arc ~/bin/arc
-ln -s ~/khaos/lt ~/bin/lt
-chmod +x ~/khaos/arc ~/khaos/lt
+bash ~/khaos/install.sh
+source ~/.zshrc
+rm -rf ~/khaos
 ```
 
-Make sure `~/bin` is in PATH. If not, add to `~/.zshrc`:
+**Option 2 — HTTPS** (git, no SSH key needed)
 ```bash
-export PATH="$HOME/bin:$PATH"
+git clone https://github.com/kwasikontor45/khaos.git ~/khaos
+bash ~/khaos/install.sh
+source ~/.zshrc
+rm -rf ~/khaos
 ```
 
-Then:
+**Option 3 — ZIP** (no git, no SSH)
+```bash
+curl -L https://github.com/kwasikontor45/khaos/archive/refs/heads/main.zip -o khaos.zip
+unzip khaos.zip
+bash khaos-main/install.sh
+source ~/.zshrc
+rm -rf khaos.zip khaos-main
+```
+
+`arc` and `lt` are copied into `~/.local/bin` — a hidden folder, nothing visible added to your home directory. The download can be deleted immediately after install.
+
+After that:
 ```bash
 arc setup       # git identity + SSH key if needed
 lt              # dashboard should show clean state
 ```
 
-Symlinks mean `~/bin/arc` and `~/bin/lt` always reflect the current state of `~/khaos/`. No copy step needed after updates — edit in khaos, commit, push.
+**To update:** repeat whichever method you used.
 
 ---
 

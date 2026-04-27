@@ -1,25 +1,41 @@
 # khaos
 
-Personal command-line tools. Portable bash — runs on any Linux.
+Command-line tools for system maintenance and daily focus. Pure bash — runs on any Linux.
 
 ---
 
 ## install
 
+Pick whichever method works for you. All three end the same way — no folders left behind.
+
+**Option 1 — SSH** (if you have a key set up)
 ```bash
 git clone git@github.com:kwasikontor45/khaos.git ~/khaos
-ln -s ~/khaos/arc ~/bin/arc
-ln -s ~/khaos/lt ~/bin/lt
-chmod +x ~/khaos/arc ~/khaos/lt
+bash ~/khaos/install.sh
+source ~/.zshrc
+rm -rf ~/khaos
 ```
 
-Make sure `~/bin` is in your PATH. If not, add this to `~/.zshrc` or `~/.bashrc`:
-
+**Option 2 — HTTPS** (git, no SSH key needed)
 ```bash
-export PATH="$HOME/bin:$PATH"
+git clone https://github.com/kwasikontor45/khaos.git ~/khaos
+bash ~/khaos/install.sh
+source ~/.zshrc
+rm -rf ~/khaos
 ```
 
-After that, `~/bin/arc` and `~/bin/lt` are symlinks — edits in `~/khaos/` take effect immediately. No sync step needed.
+**Option 3 — ZIP** (no git, no SSH)
+```bash
+curl -L https://github.com/kwasikontor45/khaos/archive/refs/heads/main.zip -o khaos.zip
+unzip khaos.zip
+bash khaos-main/install.sh
+source ~/.zshrc
+rm -rf khaos.zip khaos-main
+```
+
+Installs `arc` and `lt` into `~/.local/bin` — a hidden folder, nothing visible added to your home directory.
+
+**To update:** repeat whichever method you used.
 
 ---
 
@@ -55,10 +71,15 @@ arc update            apt update + upgrade + clean
 arc clean             deep clean: user cache, tmp, apt
 arc audit             full git audit: fetch, status, ahead/behind
 arc setup             first-time git identity + ssh key
-arc expo              kataleya dev server — Expo tunnel + debug, one command
+arc expo              expo dev server — set ARC_EXPO_DIR in your shell config
 arc ref               list archived reference files
 arc ref <name>        view archived file by name or keyword search
 arc help              full help
+```
+
+For `arc expo`, set the path to your Expo project:
+```bash
+export ARC_EXPO_DIR="/path/to/your/expo/project"
 ```
 
 ---
