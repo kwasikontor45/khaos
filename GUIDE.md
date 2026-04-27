@@ -330,4 +330,20 @@ lt              # dashboard should show clean state
 
 ---
 
+## uninstall
+
+Remove the two installed files:
+```bash
+rm ~/.local/bin/arc ~/.local/bin/lt
+```
+
+That's it. Nothing else was touched during install.
+
+If you also want to wipe `lt`'s saved tasks and notes:
+```bash
+rm -rf ~/.local/share/lt/
+```
+
+---
+
 *lt: one focus at a time. arc: one machine in a known state.*

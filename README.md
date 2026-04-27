@@ -85,6 +85,19 @@ export ARC_REF_DIR="$HOME/.refs"                  # default: ~/archive
 
 ---
 
+## uninstall
+
+```bash
+rm ~/.local/bin/arc ~/.local/bin/lt
+```
+
+If you also want to remove `lt`'s saved tasks and notes:
+```bash
+rm -rf ~/.local/share/lt/
+```
+
+---
+
 ## philosophy
 
 Two tools. One for you, one for the machine.
