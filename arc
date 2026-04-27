@@ -271,7 +271,7 @@ cmd_ref() {
   else
     # Exact or partial filename match first
     local match
-    match=$(find "$ARCHIVE" -type f -name "*${query}*" 2>/dev/null | head -1)
+    match=$(find "$ARCHIVE" -type f -path "*${query}*" 2>/dev/null | head -1)
     if [[ -n "$match" ]]; then
       local rel="${match#$ARCHIVE/}"
       echo -e "\n  ${G}${rel}${N}\n"
