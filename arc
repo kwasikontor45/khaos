@@ -252,7 +252,13 @@ cmd_ref() {
   echo -e "$HR"
 
   if [[ ! -d "$ARCHIVE" ]]; then
-    echo -e "  ${R}archive not found:${N} $ARCHIVE"
+    echo -e "  ${R}no archive found${N}"
+    echo -e ""
+    echo -e "  create a folder and drop files into it:"
+    echo -e "  ${D}mkdir ~/archive${N}"
+    echo -e ""
+    echo -e "  or point arc at an existing folder:"
+    echo -e "  ${D}export ARC_REF_DIR=\"\$HOME/your-folder\"  # add to ~/.zshrc${N}"
     echo -e "$HR"
     return 1
   fi
