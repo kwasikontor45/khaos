@@ -31,14 +31,17 @@ saved_mb() {
   fi
 }
 
-repo_info() {
-  local dir="$1"
-  local branch ahead behind short
-  branch=$(git -C "$dir" branch --show-current 2>/dev/null)
-  short=$(git -C "$dir" status --short 2>/dev/null)
-  ahead=$(git -C "$dir" rev-list @{u}..HEAD 2>/dev/null | wc -l | tr -d ' ')
-  behind=$(git -C "$dir" rev-list HEAD..@{u} 2>/dev/null | wc -l | tr -d ' ')
-  echo "$branch|$short|$ahead|$behind"
+# Scan home subdirs + USB repos dir for git repos
+scan_repos() {
+  for d in "$HOME"/*/; do
+    [[ -d "$d/.git" ]] && echo "$d"
+  done
+  local usb_repos="/mnt/storage/dev-lab/repos"
+  if [[ -d "$usb_repos" ]]; then
+    for d in "$usb_repos"/*/; do
+      [[ -d "$d/.git" ]] && echo "$d"
+    done
+  fi
 }
 
 # ── Status ─────────────────────────────────────────────────────────────────────
@@ -47,12 +50,20 @@ cmd_status() {
   echo -e "  ${C}${B}arc${N}  ${D}·${N}  ${W}$(whoami)@$(hostname)${N}"
   echo -e "$HR"
   echo -e "  ${C}disk${N}    $(disk_used) used  ${D}·${N}  $(disk_free) free  ${D}/  $(disk_total)  ($(disk_pct))${N}"
+
+  if mountpoint -q /mnt/storage 2>/dev/null; then
+    local uu uf
+    uu=$(df -h /mnt/storage | awk 'NR==2 {print $3}')
+    uf=$(df -h /mnt/storage | awk 'NR==2 {print $4}')
+    echo -e "  ${C}usb ${N}    ${uu} used  ${D}·${N}  ${uf} free  ${D}/ /mnt/storage${N}"
+  fi
+
   echo -e "$HR"
   echo -e "  ${C}repos${N}"
 
   local found=0
-  for d in "$HOME"/*/; do
-    [[ -d "$d/.git" ]] || continue
+  while IFS= read -r d; do
+    [[ -z "$d" ]] && continue
     found=1
     local name branch short ahead last status_str ahead_str
     name=$(basename "$d")
@@ -72,10 +83,126 @@ cmd_status() {
 
     printf "  ${D}·${N}  %-20s  ${D}[%s]${N}  %b%b  ${D}%s${N}\n" \
       "$name" "$branch" "$status_str" "$ahead_str" "$last"
-  done
+  done < <(scan_repos)
 
   (( found == 0 )) && echo -e "  ${D}no repos found${N}"
   echo -e "$HR"
+}
+
+# ── Health ─────────────────────────────────────────────────────────────────────
+cmd_health() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc health${N}  —  system health"
+  echo -e "$HR\n"
+
+  # Disks
+  echo -e "  ${C}disks${N}"
+  local iu if_ it ip
+  iu=$(df -h / | awk 'NR==2 {print $3}')
+  if_=$(df -h / | awk 'NR==2 {print $4}')
+  it=$(df -h / | awk 'NR==2 {print $2}')
+  ip=$(df / | awk 'NR==2 {print $5}')
+  echo -e "  ${D}·${N}  internal    ${iu} used · ${if_} free / ${it}  ${D}(${ip})${N}"
+
+  if mountpoint -q /mnt/storage 2>/dev/null; then
+    local uu uf ut up
+    uu=$(df -h /mnt/storage | awk 'NR==2 {print $3}')
+    uf=$(df -h /mnt/storage | awk 'NR==2 {print $4}')
+    ut=$(df -h /mnt/storage | awk 'NR==2 {print $2}')
+    up=$(df /mnt/storage | awk 'NR==2 {print $5}')
+    echo -e "  ${G}·${N}  usb         ${uu} used · ${uf} free / ${ut}  ${D}(${up})${N}"
+  else
+    echo -e "  ${R}·${N}  usb         not mounted"
+  fi
+
+  # RAM
+  echo ""
+  echo -e "  ${C}memory${N}"
+  local rm_used rm_avail rm_total
+  rm_used=$(free -h | awk '/Mem:/ {print $3}')
+  rm_avail=$(free -h | awk '/Mem:/ {print $7}')
+  rm_total=$(free -h | awk '/Mem:/ {print $2}')
+  echo -e "  ${D}·${N}  ram         ${rm_used} used · ${rm_avail} available / ${rm_total}"
+
+  local sw_used sw_total
+  sw_used=$(free -h | awk '/Swap:/ {print $3}')
+  sw_total=$(free -h | awk '/Swap:/ {print $2}')
+  echo -e "  ${D}·${N}  swap        ${sw_used} used / ${sw_total}"
+
+  # Encryption layers
+  echo ""
+  echo -e "  ${C}encryption${N}"
+
+  # Home (ecryptfs)
+  if grep -q ecryptfs /proc/mounts 2>/dev/null; then
+    echo -e "  ${G}✓${N}  home        ecryptfs active"
+  else
+    echo -e "  ${Y}?${N}  home        ecryptfs not detected"
+  fi
+
+  # Swap (luks)
+  if swapon --show 2>/dev/null | grep -q mapper; then
+    echo -e "  ${G}✓${N}  swap        LUKS encrypted"
+  else
+    echo -e "  ${D}·${N}  swap        ${D}(not luks or not active)${N}"
+  fi
+
+  # USB (luks) — check mapper device directly, no sudo needed
+  if [[ -b /dev/mapper/storage_crypt ]]; then
+    echo -e "  ${G}✓${N}  usb         LUKS open (storage_crypt)"
+  else
+    echo -e "  ${R}✗${N}  usb         LUKS not open"
+  fi
+
+  echo -e "\n$HR"
+}
+
+# ── Mount ──────────────────────────────────────────────────────────────────────
+cmd_mount() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc mount${N}  —  manual USB remount"
+  echo -e "$HR\n"
+
+  if mountpoint -q /mnt/storage 2>/dev/null; then
+    local uu uf
+    uu=$(df -h /mnt/storage | awk 'NR==2 {print $3}')
+    uf=$(df -h /mnt/storage | awk 'NR==2 {print $4}')
+    echo -e "  ${G}✓${N}  already mounted  —  ${uu} used · ${uf} free"
+    echo -e "$HR"
+    return 0
+  fi
+
+  local PARTUUID="e60e3d97-03"
+  local DEV="/dev/disk/by-partuuid/$PARTUUID"
+  local KEY="/etc/luks/storage.key"
+
+  if [[ ! -e "$DEV" ]]; then
+    echo -e "  ${R}✗${N}  drive not found — is the USB plugged in?"
+    echo -e "  ${D}PARTUUID: ${PARTUUID}${N}"
+    echo -e "$HR"
+    return 1
+  fi
+
+  echo -e "  ${C}opening LUKS container...${N}"
+  if sudo cryptsetup open "$DEV" storage_crypt --key-file "$KEY"; then
+    echo -e "  ${G}✓${N}  LUKS opened"
+  else
+    echo -e "  ${R}✗${N}  cryptsetup failed — key file issue?"
+    echo -e "  ${D}key: ${KEY}${N}"
+    echo -e "$HR"
+    return 1
+  fi
+
+  echo -e "  ${C}mounting /mnt/storage...${N}"
+  if sudo mount /dev/mapper/storage_crypt /mnt/storage; then
+    echo -e "  ${G}✓${N}  mounted at /mnt/storage"
+  else
+    echo -e "  ${Y}!${N}  trying with exec flag..."
+    sudo mount /dev/mapper/storage_crypt /mnt/storage -o exec
+    echo -e "  ${G}✓${N}  mounted (exec)"
+  fi
+
+  echo -e "\n$HR"
 }
 
 # ── Update ─────────────────────────────────────────────────────────────────────
@@ -138,8 +265,8 @@ cmd_audit() {
   echo -e "$HR"
 
   local found=0
-  for d in "$HOME"/*/; do
-    [[ -d "$d/.git" ]] || continue
+  while IFS= read -r d; do
+    [[ -z "$d" ]] && continue
     found=1
     local name branch short ahead behind last
     name=$(basename "$d")
@@ -164,9 +291,9 @@ cmd_audit() {
 
     (( ahead  > 0 )) && echo -e "       ${C}${ahead} commit(s) ahead of remote — push when ready${N}"
     (( behind > 0 )) && echo -e "       ${R}${behind} commit(s) behind remote — consider pulling${N}"
-  done
+  done < <(scan_repos)
 
-  (( found == 0 )) && echo -e "  ${D}no repos found in home${N}"
+  (( found == 0 )) && echo -e "  ${D}no repos found${N}"
   echo -e "\n$HR"
 }
 
@@ -189,7 +316,7 @@ cmd_setup() {
   git config --global init.defaultBranch main
 
   echo -e "\n${C}global gitignore...${N}"
-  for entry in '.env' '*.log' 'node_modules/' '.DS_Store' '__pycache__/' '*.pyc' '.expo/'; do
+  for entry in '.env' '*.env.local' '*.log' 'node_modules/' '.DS_Store' '__pycache__/' '*.pyc' '.expo/'; do
     grep -qxF "$entry" ~/.gitignore_global 2>/dev/null || echo "$entry" >> ~/.gitignore_global
   done
 
@@ -217,8 +344,61 @@ cmd_setup() {
   echo -e "$HR"
 }
 
+# ── Keys ───────────────────────────────────────────────────────────────────────
+cmd_keys() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc keys${N}  —  SSH public keys"
+  echo -e "$HR\n"
+
+  local keys=(
+    "$HOME/.ssh/id_ed25519:kwasikontor45 (primary)"
+    "$HOME/.ssh/id_ed25519_k6:k6-bleedin6ed6e-k6 (contingency)"
+  )
+
+  for entry in "${keys[@]}"; do
+    local path="${entry%%:*}"
+    local label="${entry##*:}"
+    echo -e "  ${C}${label}${N}"
+    if [[ -f "${path}.pub" ]]; then
+      echo -e "  ${G}✓${N}  ${path}.pub"
+      echo -e "  ${D}$(cat "${path}.pub")${N}"
+      echo -e "  ${D}test: ssh -T git@github.com${N}"
+    else
+      echo -e "  ${R}✗${N}  ${path}.pub not found"
+    fi
+    echo ""
+  done
+
+  echo -e "  ${D}to add a key: github.com › Settings › SSH and GPG keys › New SSH key${N}"
+  echo -e "$HR"
+}
+
+# ── Auth ───────────────────────────────────────────────────────────────────────
+cmd_auth() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc auth${N}  —  Proton Authenticator"
+  echo -e "$HR\n"
+
+  local APP="$HOME/ProtonAuthenticator.AppImage"
+  if [[ ! -f "$APP" ]]; then
+    echo -e "  ${R}✗${N}  ProtonAuthenticator.AppImage not found at ${APP}"
+    echo -e "$HR"
+    return 1
+  fi
+
+  echo -e "  ${C}launching...${N}"
+  WEBKIT_DISABLE_DMABUF_RENDERER=1 "$APP" &>/dev/null &
+  disown
+  echo -e "  ${G}✓${N}  Proton Authenticator launched (background)"
+  echo -e "\n  ${D}note: TOTP seed was on lost iPhone. If codes don't appear,${N}"
+  echo -e "  ${D}use GitHub support to reset 2FA:${N}"
+  echo -e "  ${D}https://support.github.com/contact${N}"
+  echo -e "$HR"
+}
+
 # ── Expo ───────────────────────────────────────────────────────────────────────
 cmd_expo() {
+  local mode_arg="${1:-}"
   local PROJECT_DIR="${ARC_EXPO_DIR:-}"
 
   echo -e "$HR"
@@ -227,8 +407,8 @@ cmd_expo() {
 
   if [[ -z "$PROJECT_DIR" ]]; then
     echo -e "  ${R}ARC_EXPO_DIR is not set${N}"
-    echo -e "  ${D}add to ~/.zshrc or ~/.bashrc:${N}"
-    echo -e "  ${D}export ARC_EXPO_DIR=\"/path/to/your/expo/project\"${N}"
+    echo -e "  ${D}add to ~/.bashrc:${N}"
+    echo -e "  ${D}export ARC_EXPO_DIR=\"/path/to/expo/project\"${N}"
     echo -e "$HR"
     return 1
   fi
@@ -242,10 +422,194 @@ cmd_expo() {
     sleep 1
   fi
 
+  # Mode: explicit arg > env var > tunnel default
+  local MODE
+  if [[ "$mode_arg" == "lan" ]]; then
+    MODE="lan"
+  elif [[ "$mode_arg" == "tunnel" ]]; then
+    MODE="tunnel"
+  else
+    MODE="${ARC_EXPO_MODE:-tunnel}"
+  fi
+
+  echo -e "  ${D}mode: --${MODE}${N}"
   echo -e "${C}starting Expo...${N}"
   echo -e "$HR\n"
 
-  cd "$PROJECT_DIR" && EXPO_DEBUG=1 pnpm expo start --tunnel --clear
+  cd "$PROJECT_DIR" || return 1
+
+  local PKG
+  if [[ -f pnpm-lock.yaml ]]; then
+    PKG="pnpm"
+  elif [[ -f yarn.lock ]]; then
+    PKG="yarn"
+  else
+    PKG="npx"
+  fi
+
+  $PKG expo start --$MODE --clear
+}
+
+# ── Deploy ─────────────────────────────────────────────────────────────────────
+cmd_deploy() {
+  local ATHENA_DIR="/mnt/storage/dev-lab/repos/athena"
+
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc deploy${N}  —  build + deploy Athena to Cloudflare"
+  echo -e "$HR\n"
+
+  if [[ ! -d "$ATHENA_DIR" ]]; then
+    echo -e "  ${R}✗${N}  athena repo not found at ${ATHENA_DIR}"
+    echo -e "  ${D}is the USB drive mounted? try: arc mount${N}"
+    echo -e "$HR"
+    return 1
+  fi
+
+  cd "$ATHENA_DIR" || return 1
+
+  echo -e "  ${C}building...${N}"
+  if node node_modules/vite/bin/vite.js build; then
+    echo -e "  ${G}✓${N}  build complete"
+  else
+    echo -e "  ${R}✗${N}  build failed — check errors above"
+    echo -e "$HR"
+    return 1
+  fi
+
+  echo ""
+  echo -e "  ${C}deploying to Cloudflare Pages...${N}"
+  if npx wrangler pages deploy dist --project-name athena --branch main --commit-dirty=true; then
+    echo -e "\n  ${G}✓${N}  deployed → athena.kontor.studio"
+  else
+    echo -e "\n  ${R}✗${N}  deploy failed — check wrangler auth"
+    echo -e "  ${D}wrangler config: ~/.config/.wrangler/config/default.toml${N}"
+  fi
+
+  echo -e "\n$HR"
+}
+
+# ── Mirror ─────────────────────────────────────────────────────────────────────
+cmd_mirror() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc mirror${N}  —  push repo to k6 contingency"
+  echo -e "$HR\n"
+
+  local dir
+  dir=$(git rev-parse --show-toplevel 2>/dev/null)
+  if [[ -z "$dir" ]]; then
+    echo -e "  ${R}✗${N}  not inside a git repo"
+    echo -e "  ${D}cd into a repo first, then run arc mirror${N}"
+    echo -e "$HR"
+    return 1
+  fi
+
+  local name
+  name=$(basename "$dir")
+  local remote="git@github-k6:k6-bleedin6ed6e-k6/${name}.git"
+
+  echo -e "  ${C}repo:${N}   ${name}"
+  echo -e "  ${C}target:${N} ${remote}\n"
+
+  echo -e "  ${C}pushing all branches...${N}"
+  git -C "$dir" push "$remote" --all && echo -e "  ${G}✓${N}  branches pushed"
+
+  echo -e "  ${C}pushing tags...${N}"
+  git -C "$dir" push "$remote" --tags && echo -e "  ${G}✓${N}  tags pushed"
+
+  echo -e "\n$HR"
+}
+
+# ── Day ────────────────────────────────────────────────────────────────────────
+cmd_day() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc day${N}  —  morning startup"
+  echo -e "$HR\n"
+
+  echo -e "  ${C}storage drive${N}"
+  if mountpoint -q /mnt/storage 2>/dev/null; then
+    local usb_used usb_free
+    usb_used=$(df -h /mnt/storage | awk 'NR==2 {print $3}')
+    usb_free=$(df -h /mnt/storage | awk 'NR==2 {print $4}')
+    echo -e "  ${G}✓${N}  /mnt/storage mounted  —  ${usb_used} used · ${usb_free} free"
+  else
+    echo -e "  ${R}✗${N}  USB not mounted — run ${C}arc mount${N} or plug in and wait ~5s"
+    echo -e "\n$HR"
+    return 1
+  fi
+
+  local STAMP="$HOME/.usb-bakup/.last-sync"
+  echo ""
+  echo -e "  ${C}backup${N}"
+  if [[ -f "$STAMP" ]]; then
+    echo -e "  ${D}·${N}  last sync: $(cat "$STAMP")"
+  else
+    echo -e "  ${Y}!${N}  no backup on record — run ${C}arc backup${N} before you start"
+  fi
+
+  echo ""
+  echo -e "$HR"
+  cmd_status
+}
+
+# ── Backup ─────────────────────────────────────────────────────────────────────
+cmd_backup() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc backup${N}  —  USB → ~/.usb-bakup"
+  echo -e "$HR\n"
+
+  local BAKUP_SCRIPT
+  BAKUP_SCRIPT=$(command -v bakup-usb 2>/dev/null)
+  if [[ -z "$BAKUP_SCRIPT" ]]; then
+    for p in "$HOME/local-dev/bakup-usb" "$HOME/.local/bin/bakup-usb"; do
+      [[ -x "$p" ]] && BAKUP_SCRIPT="$p" && break
+    done
+  fi
+
+  if [[ -z "$BAKUP_SCRIPT" ]]; then
+    echo -e "  ${R}bakup-usb not found${N}"
+    echo -e "  ${D}expected at ~/local-dev/bakup-usb${N}"
+    echo -e "$HR"
+    return 1
+  fi
+
+  bash "$BAKUP_SCRIPT"
+  echo -e "$HR"
+}
+
+# ── Stop ───────────────────────────────────────────────────────────────────────
+cmd_stop() {
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc stop${N}  —  safe end-of-day shutdown"
+  echo -e "$HR\n"
+
+  local killed=0
+  for pat in "expo start" "metro" "npx expo" "node_modules/.bin/expo"; do
+    if pgrep -f "$pat" &>/dev/null; then
+      pkill -f "$pat" 2>/dev/null && echo -e "  ${G}✓${N}  killed: $pat" && killed=1
+    fi
+  done
+  (( killed == 0 )) && echo -e "  ${D}·${N}  no dev servers running"
+
+  echo ""
+  echo -e "  ${C}running backup before unmount...${N}"
+  cmd_backup
+
+  echo ""
+  if mountpoint -q /mnt/storage 2>/dev/null; then
+    echo -e "  ${C}unmounting storage drive...${N}"
+    if sudo umount /mnt/storage 2>/dev/null; then
+      echo -e "  ${G}✓${N}  /mnt/storage unmounted"
+      sudo cryptsetup close storage_crypt 2>/dev/null && \
+        echo -e "  ${G}✓${N}  LUKS container closed"
+      echo -e "\n  ${G}safe to unplug the drive.${N}"
+    else
+      echo -e "  ${R}✗${N}  unmount failed — check for open files"
+      echo -e "     ${D}lsof +D /mnt/storage${N}"
+    fi
+  else
+    echo -e "  ${D}·${N}  drive not mounted — nothing to unmount"
+  fi
+  echo -e "\n$HR"
 }
 
 # ── Ref ────────────────────────────────────────────────────────────────────────
@@ -264,7 +628,7 @@ cmd_ref() {
     echo -e "  ${D}mkdir ~/archive${N}"
     echo -e ""
     echo -e "  or point arc at an existing folder:"
-    echo -e "  ${D}export ARC_REF_DIR=\"\$HOME/your-folder\"  # add to ~/.zshrc or ~/.bashrc${N}"
+    echo -e "  ${D}export ARC_REF_DIR=\"\$HOME/your-folder\"  # add to ~/.bashrc${N}"
     echo -e "$HR"
     return 1
   fi
@@ -281,7 +645,6 @@ cmd_ref() {
     echo -e "  ${D}arc ref <name>     — view a file by name${N}"
     echo -e "  ${D}arc ref <keyword>  — search across all files${N}"
   else
-    # Exact or partial filename match first
     local match
     match=$(find "$ARCHIVE" -type f -path "*${query}*" 2>/dev/null | head -1)
     if [[ -n "$match" ]]; then
@@ -293,7 +656,6 @@ cmd_ref() {
         *)            cat "$match" ;;
       esac
     else
-      # Search file contents
       echo -e "\n  ${C}searching: ${query}${N}\n"
       local hit=0
       while IFS= read -r f; do
@@ -315,25 +677,46 @@ cmd_help() {
   echo -e "$HR"
   echo -e "  ${C}${B}arc${N}  —  your system architect"
   echo -e "$HR"
-  echo -e "  ${W}arc${N}              status: disk usage + repo overview"
-  echo -e "  ${W}arc update${N}       apt update + upgrade + clean"
-  echo -e "  ${W}arc clean${N}        deep clean: user cache, tmp, apt"
-  echo -e "  ${W}arc audit${N}        full git audit: fetch, status, ahead/behind"
-  echo -e "  ${W}arc setup${N}        first-time git identity + ssh key"
-  echo -e "  ${W}arc expo${N}         expo dev server — set ARC_EXPO_DIR in your shell config"
-  echo -e "  ${W}arc ref${N}          list archived references"
-  echo -e "  ${W}arc ref <name>${N}   view archived file by name or keyword"
-  echo -e "  ${W}arc help${N}         this screen"
+  echo -e "  ${W}arc${N}                  status: disk usage + repo overview"
+  echo -e "  ${W}arc day${N}              morning startup: USB check, backup status, repos"
+  echo -e "  ${W}arc backup${N}           sync USB → ~/.usb-bakup (additive, nothing deleted)"
+  echo -e "  ${W}arc stop${N}             end-of-day: kill servers, backup, unmount USB"
+  echo -e "  ${D}──${N}"
+  echo -e "  ${W}arc deploy${N}           build + deploy Athena → athena.kontor.studio"
+  echo -e "  ${W}arc expo${N}             expo dev server (tunnel default) — set ARC_EXPO_DIR"
+  echo -e "  ${W}arc expo lan${N}         expo dev server — LAN mode (same Wi-Fi)"
+  echo -e "  ${W}arc mirror${N}           push current repo → k6 contingency account"
+  echo -e "  ${D}──${N}"
+  echo -e "  ${W}arc health${N}           disks, RAM, all encryption layers"
+  echo -e "  ${W}arc mount${N}            manual USB remount (PARTUUID-based, port-agnostic)"
+  echo -e "  ${W}arc keys${N}             show SSH public keys for both GitHub accounts"
+  echo -e "  ${W}arc auth${N}             launch Proton Authenticator"
+  echo -e "  ${D}──${N}"
+  echo -e "  ${W}arc update${N}           apt update + upgrade + clean"
+  echo -e "  ${W}arc clean${N}            deep clean: user cache, tmp, apt"
+  echo -e "  ${W}arc audit${N}            full git audit: fetch, status, ahead/behind"
+  echo -e "  ${W}arc setup${N}            first-time git identity + ssh key"
+  echo -e "  ${W}arc ref [name]${N}       list or search archived references"
+  echo -e "  ${W}arc help${N}             this screen"
   echo -e "$HR"
 }
 
 # ── Router ─────────────────────────────────────────────────────────────────────
 case "${1:-}" in
+  day)            cmd_day ;;
+  backup)         cmd_backup ;;
+  stop)           cmd_stop ;;
+  health)         cmd_health ;;
+  mount)          cmd_mount ;;
+  deploy)         cmd_deploy ;;
+  mirror)         cmd_mirror ;;
+  keys)           cmd_keys ;;
+  auth)           cmd_auth ;;
+  expo)           cmd_expo "${2:-}" ;;
   update)         cmd_update ;;
   clean)          cmd_clean ;;
   audit)          cmd_audit ;;
   setup)          cmd_setup ;;
-  expo)           cmd_expo ;;
   ref)            cmd_ref "${2:-}" ;;
   help|-h|--help) cmd_help ;;
   '')             cmd_status ;;
