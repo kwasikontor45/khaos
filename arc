@@ -672,6 +672,54 @@ cmd_ref() {
   echo -e "$HR"
 }
 
+# ── Shellies ───────────────────────────────────────────────────────────────────
+cmd_shellies() {
+  local sub="${1:-}"
+  echo -e "$HR"
+  echo -e "  ${C}${B}arc shellies${N}  —  shell manager"
+  echo -e "$HR\n"
+
+  local current_shell default_shell
+  current_shell=$(ps -p "$PPID" -o comm= 2>/dev/null | sed 's/^-//')
+  default_shell=$(getent passwd "$(whoami)" | cut -d: -f7)
+
+  case "$sub" in
+    bash|b)
+      echo -e "  ${C}setting default shell → /bin/bash${N}"
+      chsh -s /bin/bash
+      echo -e "\n  ${G}✓${N}  done — run ${C}shellb${N} to switch now"
+      ;;
+    zsh|z)
+      echo -e "  ${C}setting default shell → /bin/zsh${N}"
+      chsh -s /bin/zsh
+      echo -e "\n  ${G}✓${N}  done — run ${C}shellz${N} to switch now"
+      ;;
+    reload|r)
+      local rc
+      [[ "$current_shell" == *zsh* ]] && rc="~/.zshrc" || rc="~/.bashrc"
+      echo -e "  ${C}run in your terminal:${N}  source ${rc}"
+      echo -e "  ${D}or just type:${N}  reload"
+      echo -e "  ${D}(arc is a subshell — source must run directly in your terminal)${N}"
+      ;;
+    '')
+      echo -e "  ${C}current${N}   ${W}${current_shell:-unknown}${N}"
+      echo -e "  ${C}default${N}   ${W}${default_shell}${N}"
+      echo ""
+      echo -e "  ${D}·${N}  ${W}shellb${N}             exec bash  — switch now"
+      echo -e "  ${D}·${N}  ${W}shellz${N}             exec zsh   — switch now"
+      echo -e "  ${D}·${N}  ${W}reload${N}             source rc  — reload config"
+      echo ""
+      echo -e "  ${D}arc shellies bash${N}  — set /bin/bash as default login shell"
+      echo -e "  ${D}arc shellies zsh${N}   — set /bin/zsh as default login shell"
+      ;;
+    *)
+      echo -e "  ${R}unknown:${N} $sub  —  try: bash · zsh · reload"
+      ;;
+  esac
+
+  echo -e "\n$HR"
+}
+
 # ── Help ───────────────────────────────────────────────────────────────────────
 cmd_help() {
   echo -e "$HR"
@@ -697,6 +745,7 @@ cmd_help() {
   echo -e "  ${W}arc audit${N}            full git audit: fetch, status, ahead/behind"
   echo -e "  ${W}arc setup${N}            first-time git identity + ssh key"
   echo -e "  ${W}arc ref [name]${N}       list or search archived references"
+  echo -e "  ${W}arc shellies${N}         shell status + switch — shellb / shellz / reload"
   echo -e "  ${W}arc help${N}             this screen"
   echo -e "$HR"
 }
@@ -718,6 +767,7 @@ case "${1:-}" in
   audit)          cmd_audit ;;
   setup)          cmd_setup ;;
   ref)            cmd_ref "${2:-}" ;;
+  shellies)       cmd_shellies "${2:-}" ;;
   help|-h|--help) cmd_help ;;
   '')             cmd_status ;;
   *)              echo -e "${R}unknown:${N} $1  —  try ${C}arc help${N}"; exit 1 ;;
